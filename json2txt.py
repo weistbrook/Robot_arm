@@ -85,12 +85,12 @@ def batch_convert(json_folder, image_folder, output_folder, label_map):
 
 if __name__ == "__main__":
     # 配置参数（请根据实际路径修改）
-    json_folder = "D:/desktop/robotarm/train"    # 存放所有JSON文件的文件夹
-    image_folder = "D:/desktop/robotarm/train"       # 存放对应图像的文件夹（与JSON中imagePath对应）
-    output_folder = "D:/desktop/robotarm/yolotxt"    # 输出TXT文件的文件夹
+    json_folder = "yellowBlockdataset/images"    # 存放所有JSON文件的文件夹
+    image_folder = "yellowBlockdataset/images"       # 存放对应图像的文件夹（与JSON中imagePath对应）
+    output_folder = "yellowBlockdataset/yolotxt"    # 输出TXT文件的文件夹
     label_map = {                         # 标签映射（根据你的实际类别修改）
         "block": 1,
-        "famen": 0
+        "valve": 0
         # 可添加更多类别，如"person": 2, "car": 3...
     }
     

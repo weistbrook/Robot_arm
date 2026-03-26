@@ -6,6 +6,7 @@ import cv2                    # OpenCV库，用于图像处理
 import torch                  # PyTorch库，用于加载和运行YOLOv5模型
 import numpy as np            # NumPy库，用于数值计算
 import yaml                   # YAML库，用于加载相机内参配置文件
+import os
 from sensor_msgs.msg import Image, CameraInfo  # ROS图像和相机信息消息类型
 from cv_bridge import CvBridge  # 用于ROS图像消息与OpenCV图像的转换 
 from robot_controller import RobotController  # 机器人控制类（用户自定义）
@@ -47,8 +48,6 @@ time.sleep(1)  # 等待机器人初始化完成
 
 # 创建CvBridge实例（用于ROS与OpenCV图像转换）
 bridge = CvBridge()
-# 选择计算设备：优先使用GPU（cuda），否则使用CPU
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def prevent_stop():
     """
@@ -65,9 +64,9 @@ def prevent_stop():
     except Exception as e:
         rospy.logwarn(f"prevent_stop 执行异常: {e}")  # 打印警告日志
 
-# 使用 Ultralytics YOLO 加载模型（确保这是用 ultralytics 训练/导出的权重）
-model = YOLO('/home/jetson/ultralytics_robot/runs/yolo11n_robot_train2/weights/best.pt')
-model.to(device)  # 放到和原来一样的 device 上
+# 使用 Ultralytics YOLO 加载 ENGINE 模型（可通过环境变量覆盖路径）
+ENGINE_MODEL_PATH = "/home/jetson/ultralytics_robot/best.engine"
+model = YOLO(ENGINE_MODEL_PATH, task="detect")
 names = model.names           # 保持变量名不变，后面代码照用
 img_size = 640                # 输入尺寸和原来一致
 
@@ -297,7 +296,7 @@ def image_callback(msg):
         msg: ROS彩色图像消息（sensor_msgs/Image）
     """
     # 引用全局变量（深度图、相机内参、显示模式、推理时间戳）
-    global depth_image, camera_info, last_infer_ts
+    global depth_image, camera_info
 
     # 检查依赖数据是否就绪（深度图和相机内参必须存在）
     if depth_image is None or camera_info is None:
@@ -314,26 +313,25 @@ def image_callback(msg):
         # 将ROS彩色图像消息转换为OpenCV BGR格式
         frame = bridge.imgmsg_to_cv2(msg, "bgr8")
 
-                # 使用 Ultralytics YOLO 推理（不再手动 letterbox / NMS）
-        with torch.no_grad():
-            results = model(
-                frame,           # 直接用原始 BGR 图像
-                imgsz=img_size,
-                conf=0.65,
-                iou=0.45,
-                verbose=False,
-            )
+        # 使用 Ultralytics YOLO 推理（ENGINE）
+        results = model(
+            frame,           # 直接用原始 BGR 图像
+            imgsz=img_size,
+            conf=0.65,
+            iou=0.45,
+            verbose=False,
+        )
 
         # 将 Ultralytics 输出转换为和原来一样结构的 dets（列表，每个元素是 [x1,y1,x2,y2,conf,cls] 的 tensor）
         if not results:
             # 没有结果时，构造一个空 det，后面的 for det in dets 逻辑保持一致
-            dets = [torch.empty((0, 6), device=device)]
+            dets = [torch.empty((0, 6))]
         else:
             res = results[0]
             boxes = res.boxes  # Boxes 对象
 
             if boxes is None or len(boxes) == 0:
-                dets = [torch.empty((0, 6), device=device)]
+                dets = [torch.empty((0, 6))]
             else:
                 # 拼成和原来 det 一样的格式：[x1,y1,x2,y2,conf,cls]
                 det = torch.cat(
@@ -471,7 +469,7 @@ def image_callback(msg):
                                 action_q.put_nowait(act)  # 放入动作队列
                             except queue.Full:
                                 pass  # 忽略队列满的情况
-            #此时开始利用阀门中心的小方块进行微调，因为现在的情况下已经看不到阀门的完全整体了，识别不到完整的阀门了
+           
             elif xyz_small is not None and s_cls == 1 and 1000*xyz_small[2]<260:
                 Z_mm=1000*xyz_small[2]
                 if 1000*xyz_small[0]<2 and 1000*xyz_small[1]<2:                   

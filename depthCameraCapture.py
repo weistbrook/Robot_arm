@@ -1,10 +1,12 @@
+import os
+
 import rospy
 import numpy as np
 import yaml
 import cv2
 from cv_bridge import CvBridge
 from sensor_msgs.msg import Image
-
+from datetime import datetime
 
 bridge = CvBridge()
 depth_image = None
@@ -12,8 +14,14 @@ clicked_point = None
 clicked_distance = None
 INVALID_DEPTH_VALUE = 9999.0
 WINDOW_NAME = "Depth Image"
+SAVE_DIR = "depth_frames"
 
-
+def save_current_frame(frame):
+    os.makedirs(SAVE_DIR, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    save_path = os.path.join(SAVE_DIR, f"frame_{ts}.jpg")
+    cv2.imwrite(save_path, frame)
+    rospy.loginfo(f"Saved  Depthframe to: {save_path}")
 def load_camera_info(yaml_file):
     with open(yaml_file, "r") as file:
         cam_info = yaml.safe_load(file)
@@ -117,9 +125,11 @@ def main():
             key = cv2.waitKey(1) & 0xFF
             if key == ord("q"):
                 break
+            if key == 32:
+                save_current_frame(depth_vis)
 
         rate.sleep()
-
+    
     cv2.destroyAllWindows()
 
 
