@@ -10,18 +10,24 @@ from datetime import datetime
 
 bridge = CvBridge()
 depth_image = None
+color_image = None
 clicked_point = None
 clicked_distance = None
 INVALID_DEPTH_VALUE = 9999.0
 WINDOW_NAME = "Depth Image"
 SAVE_DIR = "depth_frames"
 
-def save_current_frame(frame):
+def save_current_frames(depth_frame, rgb_frame):
     os.makedirs(SAVE_DIR, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    save_path = os.path.join(SAVE_DIR, f"frame_{ts}.jpg")
-    cv2.imwrite(save_path, frame)
-    rospy.loginfo(f"Saved  Depthframe to: {save_path}")
+    depth_save_path = os.path.join(SAVE_DIR, f"depth_{ts}.jpg")
+    rgb_save_path = os.path.join(SAVE_DIR, f"rgb_{ts}.jpg")
+    cv2.imwrite(depth_save_path, depth_frame)
+    cv2.imwrite(rgb_save_path, rgb_frame)
+    rospy.loginfo(f"Saved depth frame to: {depth_save_path}")
+    rospy.loginfo(f"Saved rgb frame to: {rgb_save_path}")
+
+
 def load_camera_info(yaml_file):
     with open(yaml_file, "r") as file:
         cam_info = yaml.safe_load(file)
@@ -47,6 +53,14 @@ def depth_callback(msg):
         depth_image = bridge.imgmsg_to_cv2(msg, desired_encoding="passthrough")
     except Exception as e:
         rospy.logwarn_throttle(5, f"Failed to parse depth image: {e}")
+
+
+def color_callback(msg):
+    global color_image
+    try:
+        color_image = bridge.imgmsg_to_cv2(msg, "bgr8")
+    except Exception as e:
+        rospy.logwarn_throttle(5, f"Failed to parse color image: {e}")
 
 
 def build_depth_display(depth_img):
@@ -91,13 +105,20 @@ def main():
     camera_info = load_camera_info("/home/jetson/yolov5/ost.yaml")
 
     rospy.Subscriber(
+        "/camera/color/image_raw",
+        Image,
+        color_callback,
+        queue_size=1,
+        buff_size=2**24,
+    )
+
+    rospy.Subscriber(
         "/camera/depth/image_raw",
         Image,
         depth_callback,
         queue_size=1,
         buff_size=2**24,
     )
-
     cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
     cv2.setMouseCallback(WINDOW_NAME, on_mouse_click)
 
@@ -126,7 +147,10 @@ def main():
             if key == ord("q"):
                 break
             if key == 32:
-                save_current_frame(depth_vis)
+                if color_image is None:
+                    rospy.logwarn("RGB image not available yet, skip saving.")
+                else:
+                    save_current_frames(depth_vis, color_image)
 
         rate.sleep()
     
